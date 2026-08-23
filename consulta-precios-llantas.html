@@ -551,6 +551,14 @@ body.welcome-active #osLinkFab,
 body.welcome-active #pendFab,
 body.welcome-active #adminPendFab,
 body.welcome-active #osHoyFab{display:none !important;}
+/* Aviso de promociones Michelin/BFGoodrich (22/08/2026, pedido de Baron, vigente hasta el
+   31/08/2026): fondo negro, letras amarillas, obligatorio cerrar con el botón antes de seguir.
+   z-index más alto que welcomeOverlay (700) para que salga ENCIMA de la pantalla de bienvenida. */
+#promoOverlay{position:fixed;inset:0;background:#000;color:#ffd400;z-index:900;display:none;align-items:center;justify-content:center;padding:24px;box-sizing:border-box;text-align:center;}
+#promoOverlay .promo-box{max-width:440px;}
+#promoOverlay .promo-title{font-family:'Bebas Neue',sans-serif;font-size:30px;letter-spacing:.5px;line-height:1.25;margin-bottom:14px;}
+#promoOverlay .promo-sub{font-size:15.5px;font-weight:700;margin-bottom:26px;}
+#promoOverlay .promo-close-btn{background:#ffd400;color:#000;border:none;border-radius:10px;padding:12px 28px;font-weight:800;font-size:14.5px;cursor:pointer;}
 #welcomeOverlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:700;display:none;align-items:center;justify-content:center;padding:20px;box-sizing:border-box;}
 #welcomePanel{background:var(--surface);width:100%;max-width:420px;border-radius:18px;padding:28px 22px;border:1px solid var(--border);box-sizing:border-box;text-align:center;}
 #welcomeGreeting{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:.5px;margin-bottom:4px;}
@@ -1371,6 +1379,14 @@ body.welcome-active #osHoyFab{display:none !important;}
   </div>
 </div>
 
+<div id="promoOverlay">
+  <div class="promo-box">
+    <div class="promo-title">🏁 Promociones Michelin / BFGoodrich</div>
+    <div class="promo-sub">Terminan el 31 de Agosto de 2026</div>
+    <button type="button" class="promo-close-btn" onclick="cerrarPromoBanner()">Cerrar</button>
+  </div>
+</div>
+
 <div id="welcomeOverlay">
   <div id="welcomePanel">
     <div id="welcomeGreeting">Hola 👋</div>
@@ -1868,11 +1884,30 @@ function tryLogin(){
     showApp();
     // La pantalla de bienvenida solo aparece al entrar CON LA CLAVE — no cuando la sesión se
     // restaura sola al recargar la página (ver DOMContentLoaded, que llama a showApp() directo
-    // sin pasar por aquí).
-    openWelcome();
+    // sin pasar por aquí). El aviso de promociones (si aplica la fecha) sale primero, ENCIMA de
+    // la bienvenida, y solo abre la bienvenida hasta que lo cierran con el botón.
+    if(!mostrarPromoBannerSiAplica()) openWelcome();
   } else {
     document.getElementById('loginError').textContent = 'Clave incorrecta';
   }
+}
+// Tarea 22/08/2026 (Baron): aviso de promociones Michelin/BFGoodrich, obligatorio cerrar con el
+// botón, cada vez que un vendedor inicia sesión (con su clave) mientras la promoción siga
+// vigente. PROMO_FECHA_LIMITE_STR es fija (no depende del reloj del dispositivo del vendedor)
+// para que el aviso deje de salir solo, sin tocar código, en cuanto pase el 31/08/2026.
+var PROMO_FECHA_LIMITE_STR = '2026-08-31T23:59:59';
+function mostrarPromoBannerSiAplica(){
+  var hoy = new Date();
+  var limite = new Date(PROMO_FECHA_LIMITE_STR);
+  if(hoy > limite) return false;
+  var el = document.getElementById('promoOverlay');
+  if(el) el.style.display = 'flex';
+  return true;
+}
+function cerrarPromoBanner(){
+  var el = document.getElementById('promoOverlay');
+  if(el) el.style.display = 'none';
+  openWelcome();
 }
 /* ===== Iconos de navegación (relleno/sólido) =====
    Reemplazan los emojis SOLO en la navegación en pantalla (pestañas, modal de bienvenida,
@@ -2243,13 +2278,23 @@ function guardarProductoNegado(){
 
   var vendedor = document.getElementById('vendorInput').value.trim();
   var t = nowParts();
+  // Tarea 22/08/2026 (Baron reportó que no se estaba guardando en el Sheet de Matriz): a
+  // diferencia de vale/OS —donde no vale la pena hacer esperar la impresión por la red—, aquí
+  // SÍ se espera la respuesta real del backend antes de avisar, porque si falla (ej. falta la
+  // pestaña "ProductosNegados" en ese Sheet) antes se mostraba "registrado" de cualquier forma,
+  // sin que nadie se enterara del problema.
   sendToSheet({
     docType: 'productoNegado', vendedor: vendedor, sucursal: BRANCH_LABEL[getBranch(vendedor)] || '',
     fecha: t.fecha, hora: t.hora, medida: medida, marcaLlanta: marcaLlanta, modeloLlanta: modeloLlanta,
     marcaVehiculo: marcaVehiculo, submarcaVehiculo: submarcaVehiculo
+  }, false, function(ok, errMsg){
+    if(ok){
+      showToast('🚫 Producto negado registrado');
+    } else {
+      showToast('⚠️ No se pudo guardar en el Sheet (' + (errMsg || 'sin conexión') + '). Se reintentará solo — revisa el aviso de arriba.');
+    }
   });
   cerrarProductoNegado();
-  showToast('🚫 Producto negado registrado');
 }
 
 function renderCard(id, r){
@@ -4301,13 +4346,22 @@ function generarReporteMO(){
     fetchOSRHoyUnaSucursal(GAS_URL_MATRIZ), fetchOSRHoyUnaSucursal(GAS_URL_JACARANDAS),
     fetchTarifasUnaSucursal(GAS_URL_MATRIZ), fetchTarifasUnaSucursal(GAS_URL_JACARANDAS),
     fetchOSVentasUnaSucursal(GAS_URL_MATRIZ), fetchOSVentasUnaSucursal(GAS_URL_JACARANDAS),
-    fetchTarifasMontajeUnaSucursal(GAS_URL_MATRIZ), fetchTarifasMontajeUnaSucursal(GAS_URL_JACARANDAS)
+    fetchTarifasMontajeUnaSucursal(GAS_URL_MATRIZ), fetchTarifasMontajeUnaSucursal(GAS_URL_JACARANDAS),
+    fetchTerminacionesOSUnaSucursal(GAS_URL_MATRIZ), fetchTerminacionesOSUnaSucursal(GAS_URL_JACARANDAS)
   ]).then(function(results){
     var validaciones = results[0].items.concat(results[1].items);
     var osrs = results[2].items.concat(results[3].items);
     var tarifasRaw = results[4].items.concat(results[5].items);
     var osVentas = results[6].items.concat(results[7].items);
     var tarifasMontaje = results[8].items.concat(results[9].items);
+    // Tarea 22/08/2026 (Baron): el montaje de llantas solo debe pagarse si la Orden de Ejecución
+    // ya tiene terminación (candado real, no solo el checklist visual) — y, dentro de eso, solo
+    // las partidas que el vendedor SÍ confirmó como completadas. Antes esto se pagaba con solo
+    // generarse la Orden, sin importar si algún día se cerraba o no.
+    var terminacionesOS = results[10].items.concat(results[11].items);
+    var terminacionPorFolio = {};
+    terminacionesOS.forEach(function(t){ terminacionPorFolio[String(t.folio)] = t; });
+    var sinTerminarCount = 0;
 
     var tasaPorMecanico = {};
     tarifasRaw.forEach(function(t){
@@ -4330,7 +4384,31 @@ function generarReporteMO(){
       var f = parseFechaDDMMYYYY(os.fecha);
       if(!f || f < desdeDate || f > hastaDate) return;
       var tecnico = os.tecnico || 'Sin asignar';
-      (os.items || []).forEach(function(item){
+
+      // Candado real (22/08/2026): si esta Orden de Ejecución todavía no tiene terminación
+      // (nadie confirmó con el técnico qué se hizo), no se paga nada de ella todavía — aparecerá
+      // sola en un reporte futuro en cuanto se cierre. Antes se pagaba con solo generarse la
+      // Orden, sin que le importara si algún día se cerraba.
+      var term = terminacionPorFolio[String(os.folio)];
+      if(!term){ sinTerminarCount++; return; }
+
+      // itemsValidados guarda {label, completado} EN EL MISMO ORDEN en que se armó al cerrar la
+      // Orden (osTerminadoLineas: primero cada llanta, luego cada servicio) — se reconstruye esa
+      // misma lista aquí, para el mismo "os", y se cruza por POSICIÓN (no hay otra llave en el
+      // dato guardado). Si algún día el número de líneas no cuadra con lo guardado (no debería
+      // pasar — OrdenesServicio es de solo-agregar, nunca se edita), por seguridad se trata como
+      // que NADA se completó en vez de arriesgarse a pagar de más.
+      var lineas = osTerminadoLineas(os);
+      var itemsVal = term.itemsValidados || [];
+      var completadoPorKey = {};
+      var datosConsistentes = itemsVal.length === lineas.length;
+      lineas.forEach(function(l, idx){
+        completadoPorKey[l.key] = datosConsistentes ? (itemsVal[idx] ? itemsVal[idx].completado !== false : true) : false;
+      });
+      if(!datosConsistentes) sinTerminarCount++;
+
+      (os.items || []).forEach(function(item, idx){
+        if(completadoPorKey['item_'+idx] === false) return; // el técnico dijo que esto NO se hizo — no lleva comisión
         var cantidad = Number(item.cantidad) || 1;
         var tipo = claveTipoMap[item.clave];
         var comisionUnit = montajeComisionParaLlanta(tipo, item.medida, tarifasMontaje);
@@ -4358,6 +4436,11 @@ function generarReporteMO(){
       // trata siempre como PCR (confirmado por Baron: casi siempre es la llanta de refacción de
       // un vehículo normal) y se atribuye al mismo técnico que hizo el resto del montaje.
       if(String(os.serviciosTxt||'').indexOf('Montaje Adicional') !== -1 && os.montajeRin){
+        var servIdx = -1;
+        String(os.serviciosTxt||'').split(',').map(function(s){ return s.trim(); }).filter(Boolean).forEach(function(s, i){
+          if(s.indexOf('Montaje Adicional') === 0) servIdx = i;
+        });
+        if(completadoPorKey['serv_'+servIdx] !== false){
         var comisionAdic = montajeComisionParaLlanta('PCR', 'R'+os.montajeRin, tarifasMontaje);
         // El dropdown de rin incluye medidas ".5" (17.5, 19.5 — típicas de TBR, pero el vendedor
         // puede elegirlas si la llanta física es esa) que no tienen fila exacta en la tabla PCR.
@@ -4385,6 +4468,7 @@ function generarReporteMO(){
           'Tasa comisión %': sinDatosAdic ? 'SIN TIPO/RIN CONFIGURADO' : 'Tarifa fija por llanta',
           'Comisión': Math.round(montoAdic*100)/100
         });
+        }
       }
     });
     validaciones.forEach(function(v){
@@ -4430,7 +4514,8 @@ function generarReporteMO(){
     });
 
     if(filasDetalle.length === 0){
-      statusEl.textContent = '⚠️ No se encontró trabajo terminado en ese rango de fechas.';
+      statusEl.textContent = '⚠️ No se encontró trabajo terminado en ese rango de fechas.'
+        + (sinTerminarCount > 0 ? ' Hay '+sinTerminarCount+' Orden(es) de Ejecución de llantas generada(s) en ese rango que aún no tienen terminación — ciérralas para que su comisión aparezca.' : '');
       return;
     }
 
@@ -4474,7 +4559,8 @@ function generarReporteMO(){
     var sinTarifa = filasResumen.some(function(s){ return s['Tasa comisión %'] === 'SIN TARIFA CONFIGURADA'; });
     statusEl.textContent = '✅ Reporte generado: '+filasDetalle.length+' partida(s), '+filasResumen.length+' mecánico(s).'
       + (sinTarifa ? ' ⚠️ Hay mecánico(s) sin tarifa configurada en la pestaña "TarifasMecanicos" — revisa el Excel.' : '')
-      + (huboSinRinDetectado ? ' ⚠️ Hay llanta(s) sin tipo/rin detectado para la comisión de montaje — revisa el Excel (filas "SIN TIPO/RIN CONFIGURADO").' : '');
+      + (huboSinRinDetectado ? ' ⚠️ Hay llanta(s) sin tipo/rin detectado para la comisión de montaje — revisa el Excel (filas "SIN TIPO/RIN CONFIGURADO").' : '')
+      + (sinTerminarCount > 0 ? ' ⚠️ '+sinTerminarCount+' Orden(es) de Ejecución de llantas en ese rango todavía sin terminar (no se incluyó su comisión — aparecerá sola en un reporte futuro en cuanto se cierre).' : '');
   }).catch(function(){
     statusEl.textContent = '⚠️ Hubo un error al generar el reporte. Intenta de nuevo.';
   });
@@ -5447,6 +5533,15 @@ function cancelarTerminadoOS(folio){
   var el = document.getElementById('osTerminadoForm_'+folio);
   if(el) el.style.display = 'none';
 }
+// Tarea 22/08/2026 (Baron): muestra el campo de texto libre solo cuando el motivo elegido es
+// "Otro" — para los demás motivos (falla de equipo, medida/rin no correspondía, cambio de
+// decisión del cliente) el nombre de la opción ya basta como razón.
+function toggleMotivoFallaOtro(folio){
+  var sel = document.getElementById('osTerminadoMotivoFalla_'+folio);
+  var otroEl = document.getElementById('osTerminadoMotivoOtro_'+folio);
+  if(!sel || !otroEl) return;
+  otroEl.style.display = (sel.value === 'Otro') ? 'block' : 'none';
+}
 function confirmarTerminadoOS(folio){
   var p = osHoyCache.find(function(x){ return String(x.folio) === String(folio); });
   if(!p){ alert('No se encontró esa Orden de Ejecución. Intenta de nuevo.'); return; }
@@ -5457,10 +5552,24 @@ function confirmarTerminadoOS(folio){
     return { label: l.label, completado: chk ? !!chk.checked : true };
   });
   var algunoCompletado = itemsValidados.some(function(it){ return it.completado; });
-  if(!algunoCompletado){ alert('⚠️ Marca al menos una partida como terminada. Si no se hizo nada, avísale a tu supervisor en lugar de generar el comprobante.'); return; }
-  var algunoIncompleto = itemsValidados.some(function(it){ return !it.completado; });
   var comentarios = (document.getElementById('osTerminadoComentarios_'+folio) || {}).value.trim();
-  if(algunoIncompleto && !comentarios){ alert('⚠️ Indica la razón por la que no se completó todo (campo Comentarios) — ej. "Alineación no se hizo, faltó autorizar refacción".'); return; }
+  // Tarea 22/08/2026 (Baron): antes esto bloqueaba por completo si no se hizo NADA (mandaba a
+  // avisarle al supervisor por fuera de la app). Ahora sí se permite generar el comprobante en
+  // ese caso — pero exige que el vendedor confirme la razón de fuerza mayor (falla de equipo,
+  // medida/rin no correspondía, cambio de decisión del cliente, u otro con texto libre).
+  if(!algunoCompletado){
+    var motivoFallaEl = document.getElementById('osTerminadoMotivoFalla_'+folio);
+    var motivoFalla = motivoFallaEl ? motivoFallaEl.value : '';
+    if(!motivoFalla){ alert('⚠️ No se completó ningún servicio. Selecciona el motivo: falla de equipo, medida/rin no correspondía, cambio de decisión del cliente, u otro.'); return; }
+    var motivoOtroEl = document.getElementById('osTerminadoMotivoOtro_'+folio);
+    var motivoOtro = motivoOtroEl ? motivoOtroEl.value.trim() : '';
+    if(motivoFalla === 'Otro' && !motivoOtro){ alert('⚠️ Especifica cuál fue el otro motivo.'); return; }
+    var motivoTxt = (motivoFalla === 'Otro') ? motivoOtro : motivoFalla;
+    comentarios = 'SIN SERVICIO REALIZADO — Motivo: ' + motivoTxt + (comentarios ? ' · ' + comentarios : '');
+  } else {
+    var algunoIncompleto = itemsValidados.some(function(it){ return !it.completado; });
+    if(algunoIncompleto && !comentarios){ alert('⚠️ Indica la razón por la que no se completó todo (campo Comentarios) — ej. "Alineación no se hizo, faltó autorizar refacción".'); return; }
+  }
   // Cualquier vendedor de la sucursal puede confirmar, pero queda registrado quién fue (el que
   // está capturado en ese momento en el selector de vendedor).
   var vendedor = document.getElementById('vendorInput').value.trim();
@@ -5497,10 +5606,21 @@ function confirmarTerminadoOS(folio){
 // texto (para que sea obvio que es lo que hay que copiar/buscar en WhatsApp) y el mensaje ya
 // redactado, cada uno con su botón de copiar — así funciona siempre, sin depender de que el
 // navegador permita abrir ventanas solo.
-function buildMensajeTerminadoWhatsApp(p){
+// Horario de cierre confirmado por Baron (22/08/2026): lunes a viernes hasta las 6:45 PM,
+// sábado hasta las 2:00 PM. Domingo no se ha confirmado si hay servicio/horario, así que se
+// deja una frase genérica para ese día. diaSemana es opcional (0=domingo … 6=sábado) — solo se
+// usa en pruebas; en la app real siempre toma el día de hoy.
+function horaCierreWhatsAppTxt(diaSemana){
+  var dia = (typeof diaSemana === 'number') ? diaSemana : new Date().getDay();
+  if(dia >= 1 && dia <= 5) return 'antes de las 6:45 PM';
+  if(dia === 6) return 'antes de las 2:00 PM';
+  return 'antes de la hora de cierre';
+}
+function buildMensajeTerminadoWhatsApp(p, diaSemana){
   var vehiculoTxt = [p.marcaVehiculo, p.submarcaVehiculo].filter(function(x){ return x; }).join(' ') || 'su vehículo';
   var clienteTxt = p.clienteNombre || '';
-  return 'Hola'+(clienteTxt ? ' '+clienteTxt : '')+'! Le informamos que el servicio de '+vehiculoTxt+' en Urbiola Llantas y Servicios ya concluyó. Puede pasar a recogerlo el día de hoy antes de la hora de cierre. ¡Gracias por su preferencia! 🚗';
+  var horaTxt = horaCierreWhatsAppTxt(diaSemana);
+  return 'Hola'+(clienteTxt ? ' '+clienteTxt : '')+'! Le informamos que el servicio de '+vehiculoTxt+' en Urbiola Llantas y Servicios ya concluyó. Puede pasar a recogerlo el día de hoy '+horaTxt+'. ¡Gracias por su preferencia! 🚗';
 }
 function toggleWhatsAppPanelOS(folio){
   var el = document.getElementById('osWaPanel_'+folio);
@@ -5614,7 +5734,6 @@ function renderOSHoyItems(items){
            '<div class="wa-msg-box">'+escapeHtml(buildMensajeTerminadoWhatsApp(p))+'</div>' +
            '<div class="cot-rechazo-btns">' +
              '<button type="button" class="reprint-btn" onclick="copiarMensajeWhatsAppOS(\''+escapeHtml(p.folio)+'\')">Copiar mensaje</button>' +
-             '<button type="button" class="reprint-btn" onclick="abrirWhatsAppOS(\''+escapeHtml(p.folio)+'\')">Abrir WhatsApp (opcional)</button>' +
            '</div>' +
          '</div>')
       : '';
@@ -5628,6 +5747,15 @@ function renderOSHoyItems(items){
         '<div class="cot-parcial-form" id="osTerminadoForm_'+escapeHtml(p.folio)+'" style="display:none">' +
           '<label>Marca lo que SÍ se terminó (desmarca lo que quedó pendiente):</label>' +
           buildOSTerminadoChecklistHtml(p.folio, p) +
+          '<label style="margin-top:8px">Si NO se pudo hacer NINGÚN servicio (caso raro: fuerza mayor), selecciona el motivo:</label>' +
+          '<select id="osTerminadoMotivoFalla_'+escapeHtml(p.folio)+'" onchange="toggleMotivoFallaOtro(\''+escapeHtml(p.folio)+'\')">' +
+            '<option value="">— No aplica, sí se hizo algo —</option>' +
+            '<option value="Falla de equipo">Falla de equipo</option>' +
+            '<option value="Medida o rin no correspondía">Medida o rin no correspondía</option>' +
+            '<option value="Cambio de decisión del cliente">Cambio de decisión del cliente</option>' +
+            '<option value="Otro">Otro (especificar)</option>' +
+          '</select>' +
+          '<input type="text" id="osTerminadoMotivoOtro_'+escapeHtml(p.folio)+'" placeholder="Especifica cuál fue el otro motivo" style="display:none;margin-top:6px">' +
           '<label style="margin-top:8px">Comentarios (razón de lo no concluido si algo quedó pendiente):</label>' +
           '<input type="text" id="osTerminadoComentarios_'+escapeHtml(p.folio)+'" placeholder="Ej. Alineación no se hizo, faltó autorizar refacción">' +
           '<div class="cot-rechazo-btns">' +
@@ -6603,20 +6731,27 @@ function removeFromPendingSync(syncId){
   var list = loadPendingSync().filter(function(p){ return p.__syncId !== syncId; });
   savePendingSync(list);
 }
-function sendToSheet(payload, _isRetry){
+// onResult(ok, mensaje) es opcional (22/08/2026) — la mayoría de las llamadas siguen sin usarlo
+// (fire-and-forget, para no retrasar la impresión de vale/OS con la espera de red). Se agregó
+// para los pocos casos como "producto negado" donde SÍ importa avisarle a la persona si de
+// verdad no se guardó (ej. porque falta la pestaña en su Sheet) — antes eso fallaba en silencio
+// y solo quedaba en la cola de reintentos, mostrando igual "guardado" aunque no se guardara.
+function sendToSheet(payload, _isRetry, onResult){
   var url = getGasUrl(payload.vendedor);
-  if(!url || url.indexOf('http') !== 0) return;
+  if(!url || url.indexOf('http') !== 0){ if(onResult) onResult(false, 'No hay URL de Apps Script configurada para esa sucursal.'); return; }
   fetch(url, {
     method: 'POST',
     headers: {'Content-Type':'text/plain;charset=utf-8'},
     body: JSON.stringify(payload)
   }).then(function(r){ return r.json(); })
     .then(function(j){
-      if(!j || j.status !== 'ok') throw new Error('respuesta inesperada del Apps Script');
+      if(!j || j.status !== 'ok') throw new Error((j && j.message) ? j.message : 'respuesta inesperada del Apps Script');
       if(_isRetry && payload.__syncId) removeFromPendingSync(payload.__syncId);
+      if(onResult) onResult(true);
     })
-    .catch(function(){
+    .catch(function(err){
       if(!_isRetry) queuePendingSync(payload);
+      if(onResult) onResult(false, err && err.message);
     });
 }
 function retryPendingSync(){
