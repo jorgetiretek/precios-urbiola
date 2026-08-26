@@ -9,9 +9,8 @@
  *
  * Cómo funciona cada vez que se abre la app (con algo de señal):
  *  1) Se muestra al instante la copia guardada en el celular (nunca pantalla en blanco).
- *  2) Por detrás, se descarga la versión real desde GitHub y se compara contra la copia
- *     guardada (por encabezados del archivo; si el servidor no los manda, se compara el
- *     contenido completo).
+ *  2) Por detrás, se descarga la versión real desde GitHub y se compara, byte a byte, contra
+ *     la copia guardada (contenido completo, no encabezados — ver bug corregido más abajo).
  *  3) Si SÍ cambió: se guarda la nueva copia y se le avisa a la página (mensaje
  *     "utl_nueva_version"). La página, al recibir ese aviso, cierra la sesión y recarga
  *     sola — el vendedor tiene que volver a poner su clave, y ya ve los datos nuevos.
@@ -27,8 +26,20 @@
  * la app instalada nunca se actualizaba (aunque visitar el link directo en el navegador sí
  * funcionara, porque ese caso no siempre pasa por esa misma caché). Por eso el fetch de la
  * página principal ahora se pide con {cache:'no-store'}, que obliga a ir siempre a la red.
+ *
+ * SEGUNDO bug corregido (25/08/2026, reportado por Baron: probó en iPhone instalado, en
+ * navegador normal y en computadora, con espera, con regreso a la app y con refresh manual —
+ * y en NINGUNO se actualizó). La comparación "rápida" por ETag/Last-Modified
+ * (comparaPorEncabezados) podía decir "no cambió nada" de forma incorrecta: GitHub Pages sirve
+ * a través de una red de servidores (Fastly) y, aunque {cache:'no-store'} obliga al NAVEGADOR a
+ * no usar su propia caché, no obliga a esos servidores intermedios a tener ya la copia más
+ * reciente — así que la comparación de encabezados podía comparar dos copias viejas entre sí y
+ * concluir "sin cambios" aunque si hubiera una versión nueva esperando. Se quita por completo
+ * esa ruta rápida: ahora SIEMPRE se compara el contenido completo del archivo (más lento, pero
+ * 100% confiable — si el texto es distinto, se detecta sí o sí, sin depender de encabezados que
+ * el servidor intermedio puede no tener actualizados todavía).
  */
-const CACHE_VERSION = 'utl-v3';
+const CACHE_VERSION = 'utl-v4';
 const APP_PAGE = 'consulta-precios-llantas.html';
 const APP_SHELL = [
   './',
@@ -70,16 +81,6 @@ function avisarNuevaVersion() {
   });
 }
 
-// Compara la copia vieja (cached) contra la nueva (resp) usando encabezados del archivo
-// (rápido, sin descargar el contenido dos veces). Si el servidor no manda encabezados
-// útiles para comparar, regresa null y el que llama debe comparar el contenido completo.
-function comparaPorEncabezados(cachedResp, networkResp) {
-  var oldTag = cachedResp.headers.get('etag') || cachedResp.headers.get('last-modified');
-  var newTag = networkResp.headers.get('etag') || networkResp.headers.get('last-modified');
-  if (oldTag && newTag) return oldTag !== newTag;
-  return null; // sin datos suficientes
-}
-
 self.addEventListener('fetch', function (event) {
   var req = event.request;
   if (req.method !== 'GET') return; // los POST a Google Sheets nunca pasan por aquí
@@ -106,20 +107,13 @@ self.addEventListener('fetch', function (event) {
           var cachedForCompare = cached.clone();
           var respForCache = resp.clone();
           var respForCompare = resp.clone();
-          var difiere = comparaPorEncabezados(cachedForCompare, resp);
-
-          if (difiere === true) {
+          // Comparación de contenido completo, siempre (ver bug corregido 25/08/2026 arriba) —
+          // nada de encabezados de por medio, así que no importa si un servidor intermedio
+          // todavía no tiene el ETag/Last-Modified más reciente.
+          Promise.all([cachedForCompare.text(), respForCompare.text()]).then(function (vals) {
             caches.open(CACHE_VERSION).then(function (cache) { cache.put(req, respForCache); });
-            avisarNuevaVersion();
-          } else if (difiere === false) {
-            caches.open(CACHE_VERSION).then(function (cache) { cache.put(req, respForCache); });
-          } else {
-            // No hubo encabezados útiles: comparamos el contenido completo como último recurso.
-            Promise.all([cachedForCompare.text(), respForCompare.text()]).then(function (vals) {
-              caches.open(CACHE_VERSION).then(function (cache) { cache.put(req, respForCache); });
-              if (vals[0] !== vals[1]) avisarNuevaVersion();
-            });
-          }
+            if (vals[0] !== vals[1]) avisarNuevaVersion();
+          });
           return resp;
         }
 
