@@ -747,7 +747,7 @@ body.welcome-active #exitFab{display:none !important;}
 
   <div class="mode-tabs">
     <button type="button" class="mode-tab active" data-mode="inventario" onclick="setSearchMode('inventario')"><span class="ui-ico-inline" data-ico="box"></span>Inventario</button>
-    <button type="button" class="mode-tab" data-mode="catalogo" onclick="setSearchMode('catalogo')"><span class="ui-ico-inline" data-ico="book"></span>Sobre Pedido (Michelin/BFG)</button>
+    <button type="button" class="mode-tab" data-mode="catalogo" onclick="setSearchMode('catalogo')"><span class="ui-ico-inline" data-ico="book"></span>Sobre Pedido (Michelin/BFG)[PCR]</button>
   </div>
   <button type="button" class="cotaux-open-btn" onclick="abrirCotAux()">🧮 Cotizar Sobre Pedido (otras marcas)</button>
 
@@ -1582,6 +1582,16 @@ body.welcome-active #exitFab{display:none !important;}
     <h2>🧮 Cotizar Sobre Pedido (otras marcas)</h2>
     <div class="cotaux-note">Para llantas que NO están en el catálogo Michelin/BFGoodrich ni en inventario. Calcula el precio de venta a partir del costo que te dio el proveedor, ya incluyendo el flete.</div>
 
+    <div class="field-group"><label>Teléfono del cliente:</label>
+      <input type="tel" id="cotAuxTelefono" placeholder="10 dígitos">
+    </div>
+    <div class="field-group"><label>Nombre del cliente / contacto:</label>
+      <input type="text" id="cotAuxNombreCliente" placeholder="Ej. Juan Pérez">
+    </div>
+    <div class="field-group"><label>Nombre comercial de la empresa (opcional):</label>
+      <input type="text" id="cotAuxEmpresa" placeholder="Ej. Transportes García">
+    </div>
+
     <div class="field-group"><label>Descripción del producto:</label>
       <textarea id="cotAuxDesc" rows="2" placeholder="Ej. 275 65 R18 TOYO OPEN COUNTRY AT3" onblur="formatearDescCotAux()"></textarea>
     </div>
@@ -1620,26 +1630,30 @@ body.welcome-active #exitFab{display:none !important;}
       <input type="number" id="cotAuxCantidad" step="1" min="1" value="1">
     </div>
 
-    <div class="field-group"><label>Flete (por pieza, costo neto):</label>
+    <div class="field-group"><label>Flete (por pieza):</label>
       <select id="cotAuxFlete" onchange="onFleteCotAuxChange()">
         <option value="0">$0 — Camión dedicado propio / proveedor con ruta</option>
-        <option value="50">$50 — Llanta de auto por TDI</option>
-        <option value="100">$100 — Llanta de camión por TDI</option>
-        <option value="150">$150</option>
-        <option value="350" selected>$350 — PCR o camión hasta 19.5" por Transportes Vencedor</option>
-        <option value="700">$700 — Llanta de camión por Transportes Vencedor</option>
-        <option value="1500">$1,500</option>
+        <option value="50">$50 (ya con IVA) — Llanta de auto por TDI</option>
+        <option value="100">$100 (ya con IVA) — Llanta de camión por TDI</option>
+        <option value="150">$150 (ya con IVA)</option>
+        <option value="350" selected>$350 (ya con IVA) — PCR o camión hasta 19.5" por Transportes Vencedor</option>
+        <option value="700">$700 (ya con IVA) — Llanta de camión por Transportes Vencedor</option>
+        <option value="1500">$1,500 (ya con IVA)</option>
         <option value="custom">Personalizado...</option>
       </select>
       <div class="cotaux-flete-desc" id="cotAuxFleteDesc"></div>
-      <input type="number" id="cotAuxFleteCustom" step="0.01" min="0" placeholder="Costo de flete neto por pieza" style="display:none;margin-top:6px">
+      <input type="number" id="cotAuxFleteCustom" step="0.01" min="0" placeholder="Costo de flete que te dieron" style="display:none;margin-top:6px">
+      <div id="cotAuxFleteCustomIvaRow" style="display:none;margin-top:6px">
+        <div class="cotaux-flete-desc">Ese costo de flete que te dieron, ¿ya incluye IVA o es antes de IVA?</div>
+        <label class="cotaux-check-row" style="margin:4px 0"><input type="radio" name="cotAuxFleteCustomIva" value="conIva" checked> Ya incluye IVA (es el costo final)</label>
+        <label class="cotaux-check-row" style="margin:4px 0"><input type="radio" name="cotAuxFleteCustomIva" value="sinIva"> Es antes de IVA (hay que sumarle el 16%)</label>
+      </div>
     </div>
 
-    <button class="genbtn" onclick="calcularCotAux()">🧮 Calcular cotización</button>
+    <button class="genbtn" onclick="calcularCotAux()">🧮 Calcular y registrar cotización</button>
 
     <div class="cotaux-breakdown" id="cotAuxBreakdown"></div>
 
-    <button class="genbtn" id="cotAuxGuardarBtn" onclick="guardarCotAux()" style="display:none">🚫📋 Registrar cotización</button>
     <button class="clearbtn" id="cotAuxCopiarBtn" onclick="copiarCotAux()" style="display:none">📋 Copiar cotización para WhatsApp</button>
     <button class="clearbtn" onclick="cerrarCotAux()">Cancelar</button>
   </div>
@@ -2495,21 +2509,29 @@ function guardarProductoNegado(){
   cerrarProductoNegado();
 }
 
-/* ===== Auxiliar de Cotización Sobre Pedido (09/09/2026) =====
+/* ===== Auxiliar de Cotización Sobre Pedido (09/09/2026, corregido 10/09/2026) =====
    Para llantas de OTRAS marcas que no están ni en inventario ni en el catálogo Michelin/BFG.
-   El vendedor captura el costo (SIEMPRE antes de IVA) que le dio el proveedor + el flete, y la
-   app calcula el precio de venta con el MISMO criterio de fórmulas que ya usa la lista de precios
-   semanal (Grupo A: PCR/Moto/ATV/Remolque · TBR: fórmula propia · Grupo C: OTR/Agrícola/
-   Industrial/Implemento — y por instrucción de Baron, Rin suelto/Cámara/Otro también usan
-   Grupo C). El flete SIEMPRE se suma al costo ANTES de calcular el precio (queda absorbido en
-   el precio unitario, no se cobra aparte). El flete SIEMPRE genera IVA, incluso cuando el
-   producto es Agrícola (que no genera IVA) — por eso Agrícola es el único caso donde el costo
-   del producto y el del flete se combinan con IVA aplicado de forma distinta. Todo redondeado a
+   El vendedor captura el costo del producto (SIEMPRE antes de IVA, se lo pregunta el sistema) +
+   el flete, y la app calcula el precio de venta con el MISMO criterio de fórmulas que ya usa la
+   lista de precios semanal (Grupo A: PCR/Moto/ATV/Remolque · TBR: fórmula propia · Grupo C: OTR/
+   Agrícola/Industrial/Implemento — y por instrucción de Baron, Rin suelto/Cámara/Otro también
+   usan Grupo C). El flete SIEMPRE se suma al costo ANTES de calcular el precio (queda absorbido
+   en el precio unitario, no se cobra aparte).
+   OJO con el IVA del flete (aclarado 10/09/2026): los montos FIJOS del selector ($50/$100/$150/
+   $350/$700/$1500) YA INCLUYEN IVA — se usan tal cual, sin multiplicarlos otra vez. Solo en
+   "Personalizado" se le pregunta al vendedor si el costo que le dieron ya trae IVA o no, porque
+   ahí sí puede variar según cómo se lo haya cotizado el transportista. El costo del PRODUCTO, en
+   cambio, siempre se captura sin IVA y se le aplica x1.16 aquí (excepto Agrícola, que no lleva
+   IVA en el producto — pero el flete de un envío agrícola sigue llevando su IVA igual que
+   cualquier otro, por eso ahí si se suma tal cual, ya con su IVA incluido). Todo redondeado a
    $10, igual que en la lista de precios semanal. */
 var COTAUX_GRUPO_A = ['PCR','MOTO','ATV','REMOLQUE'];
 var COTAUX_FLETE_WARN_CERO = '⚠️ Confirmaste flete $0. Esto es correcto SOLO si el producto llega en camión dedicado a nosotros o el proveedor ya cuenta con ruta propia. Si no es así, selecciona el flete que corresponda.';
 
 function abrirCotAux(){
+  document.getElementById('cotAuxTelefono').value = '';
+  document.getElementById('cotAuxNombreCliente').value = '';
+  document.getElementById('cotAuxEmpresa').value = '';
   document.getElementById('cotAuxDesc').value = '';
   document.getElementById('cotAuxTipo').value = '';
   document.getElementById('cotAuxAgrWarn').style.display = 'none';
@@ -2521,7 +2543,6 @@ function abrirCotAux(){
   document.getElementById('cotAuxFleteCustom').style.display = 'none';
   document.getElementById('cotAuxBreakdown').style.display = 'none';
   document.getElementById('cotAuxBreakdown').innerHTML = '';
-  document.getElementById('cotAuxGuardarBtn').style.display = 'none';
   document.getElementById('cotAuxCopiarBtn').style.display = 'none';
   onFleteCotAuxChange();
   lastCotAux = null;
@@ -2533,6 +2554,20 @@ function cerrarCotAux(){
 function onTipoCotAuxChange(){
   var tipo = document.getElementById('cotAuxTipo').value;
   var warn = document.getElementById('cotAuxAgrWarn');
+  // 10/09/2026: si seleccionan PCR, hay que preguntar si la marca es Michelin o BFGoodrich —
+  // esas SÍ están en el catálogo "Sobre Pedido (Michelin/BFG)[PCR]" con precio ya cargado (con
+  // promoción vigente), y NO deben cotizarse aquí a mano. Este auxiliar es solo para marcas que
+  // NO están en ese catálogo.
+  if(tipo === 'PCR'){
+    var esMichelinBFG = confirm('¿La llanta que vas a cotizar es marca MICHELIN o BFGOODRICH?\n\nSi es así, dale "Cancelar" aquí y búscala en la pestaña "Sobre Pedido (Michelin/BFG)[PCR]" — ya tiene el precio cargado y no se debe cotizar a mano en este auxiliar.\n\nDale "Aceptar" SOLO si es de OTRA marca.');
+    if(!esMichelinBFG){
+      document.getElementById('cotAuxTipo').value = '';
+      showToast('👉 Búscala en la pestaña "Sobre Pedido (Michelin/BFG)[PCR]"');
+      warn.style.display = 'none';
+      document.getElementById('cotAuxAgrCheck').checked = false;
+      return;
+    }
+  }
   if(tipo === 'AGR'){
     warn.style.display = 'block';
   } else {
@@ -2543,7 +2578,9 @@ function onTipoCotAuxChange(){
 function onFleteCotAuxChange(){
   var sel = document.getElementById('cotAuxFlete');
   var custom = document.getElementById('cotAuxFleteCustom');
+  var customIvaRow = document.getElementById('cotAuxFleteCustomIvaRow');
   custom.style.display = (sel.value === 'custom') ? 'block' : 'none';
+  customIvaRow.style.display = (sel.value === 'custom') ? 'block' : 'none';
   if(sel.value === '0'){
     showToast(COTAUX_FLETE_WARN_CERO);
   }
@@ -2564,9 +2601,16 @@ function formatearDescCotAux(){
   });
   el.value = words.join(' ');
 }
-function calcularPrecioCotAux(tipo, costoNeto, fleteNeto){
+function calcularPrecioCotAux(tipo, costoNeto, fleteConIva){
+  // costoNeto: costo del producto SIEMPRE antes de IVA (así se le pide siempre al vendedor).
+  // fleteConIva: costo de flete YA CON IVA incluido (costo final, no se le vuelve a aplicar
+  // 1.16) — corregido 10/09/2026 después de que Baron aclaró que los montos fijos del selector
+  // ($50/$100/$150/$350/$700/$1500) ya incluyen IVA; solo en "Personalizado" se pregunta si lo
+  // que capturó el vendedor ya trae IVA o no, y ahí sí se le suma el 1.16 si hace falta (ver
+  // calcularCotAux). Si es Agrícola, el producto no lleva IVA (se queda tal cual) pero el flete
+  // SIEMPRE lo lleva, así que se suma ya con su IVA incluido.
   var esAgricola = (tipo === 'AGR');
-  var costoBase = esAgricola ? (costoNeto + fleteNeto * 1.16) : ((costoNeto + fleteNeto) * 1.16);
+  var costoBase = esAgricola ? (costoNeto + fleteConIva) : (costoNeto * 1.16 + fleteConIva);
   var grupo = COTAUX_GRUPO_A.indexOf(tipo) !== -1 ? 'A' : (tipo === 'TBR' ? 'TBR' : 'C');
   var out = {};
   if(grupo === 'A'){
@@ -2601,6 +2645,11 @@ function calcularPrecioCotAux(tipo, costoNeto, fleteNeto){
   return out;
 }
 function calcularCotAux(){
+  var telefono = document.getElementById('cotAuxTelefono').value.trim();
+  var nombreCliente = document.getElementById('cotAuxNombreCliente').value.trim();
+  var empresa = document.getElementById('cotAuxEmpresa').value.trim();
+  if(!telefono){ alert('⚠️ Falta el teléfono del cliente.'); return; }
+  if(!nombreCliente){ alert('⚠️ Falta el nombre del cliente/contacto.'); return; }
   var descripcion = document.getElementById('cotAuxDesc').value.trim();
   var tipo = document.getElementById('cotAuxTipo').value;
   if(!descripcion){ alert('⚠️ Falta la descripción del producto.'); return; }
@@ -2615,29 +2664,38 @@ function calcularCotAux(){
   var cantidad = parseInt(document.getElementById('cotAuxCantidad').value, 10);
   if(!cantidad || cantidad < 1) cantidad = 1;
   var fleteSel = document.getElementById('cotAuxFlete').value;
-  var flete;
+  var flete, fleteConIva;
   if(fleteSel === 'custom'){
     flete = parseFloat(document.getElementById('cotAuxFleteCustom').value);
-    if(isNaN(flete) || flete < 0){ alert('⚠️ Captura el costo de flete personalizado (neto).'); return; }
+    if(isNaN(flete) || flete < 0){ alert('⚠️ Captura el costo de flete personalizado.'); return; }
+    var ivaMode = (document.querySelector('input[name="cotAuxFleteCustomIva"]:checked') || {}).value;
+    fleteConIva = (ivaMode === 'sinIva') ? flete * 1.16 : flete;
   } else {
+    // Los montos fijos del selector ya incluyen IVA (confirmado por Baron 10/09/2026) — se usan
+    // tal cual, sin multiplicarlos de nuevo.
     flete = parseFloat(fleteSel);
+    fleteConIva = flete;
   }
-  var calc = calcularPrecioCotAux(tipo, costo, flete);
+  var calc = calcularPrecioCotAux(tipo, costo, fleteConIva);
   var ivaUnitario = calc.esAgricola ? 0 : Math.round((calc.p1 - calc.p1/1.16)*100)/100;
   var total = Math.round(calc.p1 * cantidad * 100)/100;
   lastCotAux = {
-    descripcion: descripcion, tipo: tipo, costo: costo, flete: flete, cantidad: cantidad,
+    telefono: telefono, nombreCliente: nombreCliente, empresa: empresa,
+    descripcion: descripcion, tipo: tipo, costo: costo, flete: flete, fleteConIva: Math.round(fleteConIva*100)/100, cantidad: cantidad,
     calc: calc, ivaUnitario: ivaUnitario, total: total
   };
   renderCotAuxBreakdown(lastCotAux);
-  document.getElementById('cotAuxGuardarBtn').style.display = 'block';
   document.getElementById('cotAuxCopiarBtn').style.display = 'block';
+  // 10/09/2026: ya no se le pide al vendedor que le dé "Registrar" aparte — en cuanto calcula,
+  // se guarda solo en el Sheet, sin pasos ni confirmaciones extra.
+  guardarCotAux();
 }
 function renderCotAuxBreakdown(ctx){
   var b = document.getElementById('cotAuxBreakdown');
   function row(label, val){ return '<div class="cotaux-row"><span>'+escapeHtml(label)+'</span><b>'+escapeHtml(String(val))+'</b></div>'; }
   var rows = '';
-  rows += row('Costo neto + flete (base p/ fórmula)', fmt(ctx.calc.costoBase));
+  rows += row('Flete usado (ya con IVA)', fmt(ctx.fleteConIva));
+  rows += row('Costo + flete (base p/ fórmula)', fmt(ctx.calc.costoBase));
   rows += row('🏷️ Precio de lista', fmt(ctx.calc.lista));
   rows += row('💳 6 MSI', fmt(ctx.calc.msi));
   rows += row('💵 Precio Unitario ('+ctx.calc.labels.p1+')', fmt(ctx.calc.p1));
@@ -2656,8 +2714,9 @@ function guardarCotAux(){
   sendToSheet({
     docType: 'cotizacionSobrePedido', vendedor: vendedor, sucursal: BRANCH_LABEL[getBranch(vendedor)] || '',
     fecha: t.fecha, hora: t.hora, descripcion: lastCotAux.descripcion, tipoProducto: lastCotAux.tipo,
-    costoNeto: lastCotAux.costo, fleteUnitario: lastCotAux.flete, cantidad: lastCotAux.cantidad,
-    precioUnitario: lastCotAux.calc.p1, ivaUnitario: lastCotAux.ivaUnitario, total: lastCotAux.total
+    costoNeto: lastCotAux.costo, fleteUnitario: lastCotAux.fleteConIva, cantidad: lastCotAux.cantidad,
+    precioUnitario: lastCotAux.calc.p1, ivaUnitario: lastCotAux.ivaUnitario, total: lastCotAux.total,
+    telefonoCliente: lastCotAux.telefono, nombreCliente: lastCotAux.nombreCliente, empresaCliente: lastCotAux.empresa
   }, false, function(ok, errMsg){
     if(ok){
       showToast('📋 Cotización registrada');
