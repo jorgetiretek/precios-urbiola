@@ -1582,6 +1582,10 @@ body.welcome-active #exitFab{display:none !important;}
     <h2>🧮 Cotizar Sobre Pedido (otras marcas)</h2>
     <div class="cotaux-note">Para llantas que NO están en el catálogo Michelin/BFGoodrich ni en inventario. Calcula el precio de venta a partir del costo que te dio el proveedor, ya incluyendo el flete.</div>
 
+    <div class="field-group"><label>Descripción del producto:</label>
+      <textarea id="cotAuxDesc" rows="2" placeholder="Ej. 275 65 R18 TOYO OPEN COUNTRY AT3" onblur="formatearDescCotAux()"></textarea>
+    </div>
+
     <div class="field-group"><label>Teléfono del cliente:</label>
       <input type="tel" id="cotAuxTelefono" placeholder="10 dígitos">
     </div>
@@ -1590,10 +1594,6 @@ body.welcome-active #exitFab{display:none !important;}
     </div>
     <div class="field-group"><label>Nombre comercial de la empresa (opcional):</label>
       <input type="text" id="cotAuxEmpresa" placeholder="Ej. Transportes García">
-    </div>
-
-    <div class="field-group"><label>Descripción del producto:</label>
-      <textarea id="cotAuxDesc" rows="2" placeholder="Ej. 275 65 R18 TOYO OPEN COUNTRY AT3" onblur="formatearDescCotAux()"></textarea>
     </div>
 
     <div class="field-group"><label>Tipo de producto:</label>
